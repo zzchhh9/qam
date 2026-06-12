@@ -113,6 +113,8 @@ def setup_wandb(
     if tags is None:
         tags = [group] if group is not None else None
 
+    # Honor WANDB_MODE env var (disabled/offline) to skip wandb auth requirement
+    env_mode = os.environ.get('WANDB_MODE', mode)
     init_kwargs = dict(
         config=get_flag_dict(),
         project=project,
@@ -125,11 +127,15 @@ def setup_wandb(
             start_method='thread',
             _disable_stats=False,
         ),
-        mode=mode,
+        mode=env_mode,
     )
 
-    run = wandb.init(**init_kwargs)
-
+    try:
+        run = wandb.init(**init_kwargs)
+    except Exception as e:
+        print(f'[wandb] init failed ({e}); falling back to disabled mode.')
+        init_kwargs['mode'] = 'disabled'
+        run = wandb.init(**init_kwargs)
     return run
 
 

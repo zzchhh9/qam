@@ -108,19 +108,46 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5):
         eval_env = EpisodeMonitor(eval_env, filter_regexes=['.*privileged.*', '.*proprio.*'])
         train_dataset = Dataset.create(**train_dataset)
         val_dataset = Dataset.create(**val_dataset)
+    elif env_name.startswith('bigym-'):
+        # BiGym (copied from sibling fqc/ project, dataset from HDF5)
+        import os as _os, h5py
+        from envs import bigym_utils as _bg
+        _freq = int(_os.environ.get('BIGYM_FREQ', '50'))  # must match the dataset freq (25 or 50)
+        env = _bg.make_env(env_name, frequency=_freq, use_cameras=False)
+        eval_env = _bg.make_env(env_name, frequency=_freq, use_cameras=False)
+        env = EpisodeMonitor(env)
+        eval_env = EpisodeMonitor(eval_env)
+        hdf5_path = _os.environ.get(
+            'BIGYM_HDF5',
+            '/share_data/zhuzecheng/workspace/psi-post-rl/fqc/data/bigym/vlm_critic_train_v2.hdf5',
+        )
+        print(f'Loading BiGym dataset: {hdf5_path}')
+        with h5py.File(hdf5_path, 'r') as f:
+            obs = f['observations'][:].astype(np.float32)
+            act = f['actions'][:].astype(np.float32)
+            rew = f['rewards'][:].astype(np.float32)
+            term = f['terminals'][:].astype(np.float32)
+            masks = f['masks'][:].astype(np.float32) if 'masks' in f else (1.0 - term).astype(np.float32)
+            next_obs = f['next_observations'][:].astype(np.float32) if 'next_observations' in f else None
+        if next_obs is None:
+            # Build from observations shifted by 1 (terminal frames use same obs)
+            next_obs = np.concatenate([obs[1:], obs[-1:][None][0]])
+        print(f'  Loaded {len(obs)} transitions, action_dim={act.shape[-1]}, obs_dim={obs.shape[-1]}')
+        dataset = dict(observations=obs, actions=act, rewards=rew,
+                       terminals=term, masks=masks, next_observations=next_obs)
+        train_dataset = Dataset.create(**dataset)
+        val_dataset = None
     elif 'antmaze' in env_name and ('diverse' in env_name or 'play' in env_name or 'umaze' in env_name):
         # D4RL AntMaze.
         from envs import d4rl_utils
-
         env = d4rl_utils.make_env(env_name)
         eval_env = d4rl_utils.make_env(env_name)
         dataset = d4rl_utils.get_dataset(env, env_name)
         train_dataset, val_dataset = dataset, None
     elif 'pen' in env_name or 'hammer' in env_name or 'relocate' in env_name or 'door' in env_name:
-        # D4RL Adroit.
+        # D4RL Adroit. Must come AFTER bigym branch because 'pen' matches 'open' in bigym task names.
         import d4rl.hand_manipulation_suite  # noqa
         from envs import d4rl_utils
-
         env = d4rl_utils.make_env(env_name)
         eval_env = d4rl_utils.make_env(env_name)
         dataset = d4rl_utils.get_dataset(env, env_name)

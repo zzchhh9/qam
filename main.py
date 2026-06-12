@@ -175,7 +175,7 @@ def main(_):
             load_step = int(load_step)
             agent = restore_agent(agent, restore_path=FLAGS.save_dir, restore_epoch=load_step)
             restore_csv_loggers(csv_loggers, FLAGS.save_dir)
-            assert load_stage == "offline", "online restoring is not supported"
+            # Allow online resume (canonical assert removed). Online loop will skip steps <= load_step.
             success = True
         except:
             success = False
@@ -202,6 +202,10 @@ def main(_):
     if load_stage == "offline" and load_step is not None:
         start_step = load_step + 1
         print(f"restoring from offline step {start_step}")
+    elif load_stage == "online" and load_step is not None:
+        # Already past offline phase — skip it entirely
+        start_step = FLAGS.offline_steps + 1
+        print(f"resumed from online (log_step={load_step}); skipping offline loop")
     else:
         start_step = 1
 
@@ -264,12 +268,18 @@ def main(_):
     
     action_dim = example_batch["actions"].shape[-1]
 
-    # Online RL
+    # Online RL — support online resume: if previous run saved online progress, skip past it
     update_info = {}
     action_queue = [] # for action chunking
     ob, _ = env.reset()
 
-    for i in tqdm.tqdm(range(1, FLAGS.online_steps + 1)):
+    # Determine online start: if resumed mid-online, advance i to (load_step - offline_steps) + 1
+    online_start = 1
+    if load_stage == "online" and load_step is not None:
+        online_start = (load_step - FLAGS.offline_steps) + 1
+        print(f"restoring from online step {online_start - 1} (log_step={load_step})")
+
+    for i in tqdm.tqdm(range(online_start, FLAGS.online_steps + 1)):
         log_step = FLAGS.offline_steps + i
         online_rng, key = jax.random.split(online_rng)
 
@@ -378,12 +388,20 @@ def main(_):
             )
             logger.log(eval_info, "eval", step=log_step)
 
+        # Save during online phase too (canonical only saved offline; we need ckpts for eval)
+        if FLAGS.save_interval > 0 and i % FLAGS.save_interval == 0:
+            save_agent(agent, FLAGS.save_dir, log_step)
+            save_csv_loggers(csv_loggers, FLAGS.save_dir)
+            with open(os.path.join(FLAGS.save_dir, 'progress.tk'), 'w') as f:
+                # write log_step (not i) so restore_agent finds params_{log_step}.pkl
+                f.write(f"online,{log_step}")
+
     for key, csv_logger in logger.csv_loggers.items():
         csv_logger.close()
 
     # a token to indicate a successfully finished run
     with open(os.path.join(FLAGS.save_dir, 'token.tk'), 'w') as f:
-        f.write(run.url)
+        f.write(str(getattr(run, 'url', None) or 'disabled'))
 
     # cleanup
     if FLAGS.auto_cleanup:
