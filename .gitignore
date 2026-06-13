@@ -19,3 +19,7 @@ wandb/
 *.hdf5
 *.log
 MUJOCO_LOG.TXT
+
+# Published best checkpoints (Git LFS)
+!checkpoints/
+!checkpoints/**

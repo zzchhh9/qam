@@ -43,7 +43,13 @@ agent = QAMAgent.create(SEED, ex_obs, ex_act, config)
 
 with open(ckpt_path, 'rb') as f:
     save_dict = pickle.load(f)
-agent = flax.serialization.from_state_dict(agent, save_dict['agent'])
+try:
+    agent = flax.serialization.from_state_dict(agent, save_dict['agent'])
+except Exception:
+    # inference-only checkpoint (optimizer state stripped, see checkpoints/) -> load params only
+    sd = save_dict['agent']
+    net_params = flax.serialization.from_state_dict(agent.network.params, sd['network']['params'])
+    agent = agent.replace(network=agent.network.replace(params=net_params))
 print(f'Loaded {ckpt_path}')
 
 action_dim = env.action_space.shape[0]
