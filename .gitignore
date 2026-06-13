@@ -7,4 +7,15 @@ dist/
 .DS_Store
 .idea/
 .ruff_cache/
+
+# Generated training outputs (not for the repo)
 exp/
+diagnostics_*/
+logs/
+videos/
+wandb/
+*.pkl
+*.npy
+*.hdf5
+*.log
+MUJOCO_LOG.TXT

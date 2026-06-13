@@ -47,6 +47,14 @@ MUJOCO_GL=egl python main.py --run_group=reproduce --agent=agents/qam.py --tags=
 ## How do I obtain the 100M for puzzle-4x4 and cube-quadruple?
 Please follow the instructions [here](https://github.com/seohongpark/horizon-reduction?tab=readme-ov-file#using-large-datasets) to obtain the large datasets.
 
+## Fork note (BiGym FQC-vs-QAM comparison)
+This is a fork of the official QAM repo used as the **QAM baseline** for the BiGym FQC comparison.
+**`agents/qam.py` is byte-identical to upstream — the algorithm is unchanged.** The only additions are
+infrastructure in `main.py` (online-resume support + checkpoint saving during the online phase) and a
+standalone `eval_canonical_qam.py` (50-episode eval, independent seed). BiGym runs use
+`--horizon_length 8 --agent.inv_temp 0.3` (vs the OGBench defaults in the commands above). Verified BiGym
+results are in `QAM_BIGYM_RESULTS.md`.
+
 ## Acknowledgments
 This codebase is built on top of [QC](https://github.com/colinqiyangli/qc).
 
